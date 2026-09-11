@@ -31,7 +31,7 @@ You MUST reply ONLY with a JSON object strictly following this format:
 
 class AIReviewer:
     def __init__(self):
-        self.api_key = "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"
+        self.api_key = "API Key here"
         self.client = openai.AsyncOpenAI(api_key=self.api_key)
 
     async def analyze_diff(self, diff_text: str) -> dict:

@@ -4,7 +4,7 @@ import httpx
 class GitHubClient:
 
     BASE_URL = "https://api.github.com"
-    TOKEN = "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"
+    TOKEN = "Github Personal Access Token"
 
     async def get_pr_diff(self, owner: str, repo: str, pr_number: int) -> str:
         """Fetches the raw Unified Diff of a Pull Request."""
