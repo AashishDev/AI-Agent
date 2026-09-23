@@ -20,13 +20,13 @@ async def root():
 @app.post("/pr/{owner}/{repo}/{pr_number}/review")
 async def run_full_pr_review(owner: str, repo: str, pr_number: int):
     """
-    Executes complete 3-step workflow:
+    Executes V1 workflow:
     1. Fetch PR details and raw diff from GitHub Public API
-    2. Request code review suggestions from Gemini AI
-    3. Post the AI suggestions back as a GitHub PR comment
+    2. Request review verdict and suggestions from Gemini AI
+    3. Post well-formatted Markdown review comment back to the GitHub PR
     """
     try:
-        # STEP 1: Fetch PR Details and Code Diff from GitHub API
+        # STEP 1: Fetch PR Details and Code Diff
         pr_info = await github_client_instance.get_pull_request(owner, repo, pr_number)
         raw_diff = await github_client_instance.get_pr_diff(owner, repo, pr_number)
 
@@ -38,22 +38,56 @@ async def run_full_pr_review(owner: str, repo: str, pr_number: int):
         # STEP 2: Send Diff to Gemini AI for Review
         review_result = await ai_reviewer_instance.analyze_diff(sanitized_diff)
 
-        # Format AI output into Markdown
-        comment_markdown = f"## 🤖 AI Code Review Summary\n\n{review_result.get('summary', 'No summary provided.')}\n\n"
+        verdict = review_result.get("verdict", "COMMENT").upper()
+        summary = review_result.get("summary", "No summary provided.")
+        suggestions = review_result.get("suggestions", [])
 
-        inline_comments = review_result.get("comments", [])
-        if inline_comments:
-            comment_markdown += "### 💡 Suggested Changes & Notes:\n"
-            for item in inline_comments:
-                file_path = item.get("path", "General")
-                line = item.get("line", "-")
-                body = item.get("body", "")
-                comment_markdown += f"- **`{file_path}`** (Line {line}): {body}\n"
+        # Configure status badge and message based on verdict
+        if verdict == "APPROVE":
+            status_badge = "### ✅ **Verdict: APPROVED (Ready to Merge)**"
+            action_note = "Code looks clean and safe to merge! No blocking issues found."
+        elif verdict == "REQUEST_CHANGES":
+            status_badge = "### ❌ **Verdict: CHANGES REQUESTED**"
+            action_note = "Please review and address the highlighted action items before merging."
+        else:
+            status_badge = "### 💬 **Verdict: COMMENT / NEUTRAL**"
+            action_note = "Review completed with optional suggestions or guidance."
+
+        # STEP 3: Build high-quality Markdown template for GitHub display
+        comment_markdown = f"""## ♊ Reviewed by Gemini AI
+
+> 🤖 *Automated Code Review*
+
+{status_badge}
+**Next Steps:** {action_note}
+
+---
+
+### 📝 **Summary**
+{summary}
+"""
+
+        # Format suggestions as clean Markdown callouts
+        if suggestions:
+            comment_markdown += "\n### 💡 **Suggested Improvements**\n\n"
+            for idx, item in enumerate(suggestions, 1):
+                file_path = item.get("file", "General")
+                line_info = item.get("line_info", "N/A")
+                title = item.get("title", "Suggestion")
+                recommendation = item.get("recommendation", "")
+
+                comment_markdown += f"#### {idx}. {title}\n"
+                comment_markdown += f"- **File:** `{file_path}` ({line_info})\n"
+                comment_markdown += f"- **Recommendation:** {recommendation}\n\n"
+        else:
+            comment_markdown += "\n---\n*✨ No code suggestions or warnings identified in this diff.*\n"
 
         if review_result.get("error"):
-            comment_markdown += f"\n⚠️ **Note:** {review_result['error']}"
+            comment_markdown += f"\n\n> ⚠️ **System Warning:** `{review_result['error']}`"
 
-        # STEP 3: Post AI Comments back to GitHub Repo
+        comment_markdown += "\n\n---\n*Powered by FastAPI & Google Gemini API*"
+
+        # Post comment back to GitHub
         posted_comment = await github_client_instance.post_issue_comment(
             owner=owner,
             repo=repo,
