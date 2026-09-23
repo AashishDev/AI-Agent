@@ -1,5 +1,6 @@
 import json
-import openai # Or use google-genai / anthropic based on your LLM provider
+from google import genai
+from google.genai import types
 
 SYSTEM_PROMPT = """
 You are a Staff Software Engineer performing an automated Code Review on a Git Diff.
@@ -29,25 +30,26 @@ You MUST reply ONLY with a JSON object strictly following this format:
 }
 """
 
+
 class AIReviewer:
     def __init__(self):
-        self.api_key = "API Key here"
-        self.client = openai.AsyncOpenAI(api_key=self.api_key)
+        self.api_key = "AQ.Ab8RN6L4ldriAIcB0owmAm1Xg51CWRNgPVMFbJAcgovYLP4BfQ"
+        self.client = genai.Client(api_key=self.api_key)
 
     async def analyze_diff(self, diff_text: str) -> dict:
+        """Step 2: Generate review suggestions using Gemini API."""
         try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Review this git diff:\n\n{diff_text}"}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.2
+            response = await self.client.aio.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=f"Review this git diff:\n\n{diff_text}",
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                ),
             )
-            
-            raw_content = response.choices[0].message.content
-            return json.loads(raw_content)
+
+            return json.loads(response.text)
         except Exception as e:
             return {
                 "summary": "AI Review failed during processing.",
