@@ -3,7 +3,7 @@ import httpx
 
 class GitHubClient:
     BASE_URL = "https://api.github.com"
-    TOKEN = "Type your GitHub Personal Access Token here"  # Must have 'repo' scope permissions
+    TOKEN = "Github token here"  # Must have 'repo' scope permissions
 
     def _get_headers(self) -> dict:
         headers = {

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException,Request
 from app.github_client import GitHubClient
 from app.ai_reviewer import AIReviewer
 
@@ -106,3 +106,89 @@ async def run_full_pr_review(owner: str, repo: str, pr_number: int):
         print(f"❌ ERROR DURING PR REVIEW WORKFLOW: {type(e).__name__} - {str(e)}")
         status_code = 404 if "404" in str(e) else 500
         raise HTTPException(status_code=status_code, detail=str(e))
+
+
+    # GitHub Web hook Integration (Optional)
+
+@app.post("/github/webhook")
+async def github_webhook(request: Request):
+    """
+    GitHub webhook endpoint.
+
+    Triggered when a Pull Request is:
+    - opened
+    - updated with new commits (synchronize)
+    """
+
+    try:
+        payload = await request.json()
+
+        action = payload.get("action")
+
+        # We only review newly opened PRs and updated PRs
+        if action not in ["opened", "synchronize"]:
+            return {
+                "status": "ignored",
+                "reason": f"Action '{action}' is not handled"
+            }
+
+        pull_request = payload.get("pull_request")
+
+        if not pull_request:
+            raise HTTPException(
+                status_code=400,
+                detail="Pull request information missing"
+            )
+
+        # PR number
+        pr_number = pull_request.get("number")
+
+        # Repository information
+        repository = payload.get("repository", {})
+
+        repo_name = repository.get("name")
+
+        # Repository owner
+        owner = repository.get("owner", {}).get("login")
+
+        if not owner or not repo_name or not pr_number:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid GitHub webhook payload"
+            )
+
+        print(
+            f"🔔 GitHub Webhook received: "
+            f"{owner}/{repo_name} PR #{pr_number} "
+            f"Action={action}"
+        )
+
+        # Trigger your existing PR review workflow
+        result = await run_full_pr_review(
+            owner=owner,
+            repo=repo_name,
+            pr_number=pr_number
+        )
+
+        return {
+            "status": "success",
+            "action": action,
+            "owner": owner,
+            "repo": repo_name,
+            "pr_number": pr_number,
+            "review_result": result
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print(
+            f"❌ WEBHOOK ERROR: "
+            f"{type(e).__name__} - {str(e)}"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
